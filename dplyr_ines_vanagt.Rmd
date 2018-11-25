@@ -1,0 +1,412 @@
+---
+title: "prenoms_dplyr_clean_data_if-at-all_en"
+output: html_document
+---
+
+
+
+Please, submit your work in shape of a zipped folder containing an RStudio project to xhec2018@thinkr.fr 
+
+Deadline : 4th november, 11:00 PM 
+
+The name of the project should be ???dplyr_firstname_lastname???.
+
+The project must contain a .Rmd file and the corresponding rendered .html file. Packages should be loaded at the top of the .Rmd file. 
+
+
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo = TRUE,eval=TRUE)
+```
+
+## Warm-up
+
+### Make sure you've installed {dplyr} >= 0.7 and {prenoms} package
+
+```{r}
+# Installing {dplyr} and {prenoms} if these packages are not installed yet or if installed but in an older version, using "require".
+if (!require(prenoms)) install.packages('prenoms')
+if (!require(dplyr) | packageVersion("dplyr")<0.7) install.packages('dplyr')
+
+#Now both packages should be installed in a recent enough version
+```
+
+
+### Load here `{dplyr}`, `{prenoms}` and any other needed package
+
+```{r}
+library(dplyr)
+library(prenoms)
+library(stringr) #needed for Q1 of "Elementary and College Schools" part
+library(readxl) #needed for Q1 of "Facts observed by the police services and national gendarmerie units by department"
+library(tidyr) #needed for Q1 of "Facts observed by the police services and national gendarmerie units by department"
+library(sf) #needed for bonus question
+library(ggplot2) #needed for bonus question
+```
+
+### Import
+
+#### prenomsdataset
+
+Using `data(prenoms)` load `prenoms` dataset from  `{prenoms}` package.
+
+```{r}
+data(prenoms)
+```
+
+What kind of object is `prenoms` ? 
+
+```{r}
+class(prenoms)
+# prenoms is a special type of data frame, it is a tibble.
+```
+
+Explore the database using the '5-functions-to-always-run-on-a-database'
+
+```{r}
+prenoms %>% dim()
+prenoms %>% names()
+prenoms %>% head()
+prenoms %>% summary()
+# I used the 'View' function to have a look at the tibble, but removed it because it prevents the file from knitting.
+
+# Setting UTF-8 to account for accents
+Sys.setlocale(locale = "en_us.UTF-8")
+```
+
+Using `glimpse`, have a look at `prenoms`'s structure.
+
+```{r}
+prenoms %>% glimpse()
+```
+
+#### Regions, departements and surfaces
+
+Load the "dpt_data_modif.csv" dataset from IGN (French public state administrative establishment founded in 1940[1] to produce and maintain geographical information for France and its overseas departments and territories) using the appropriate function. Data have been prepared for you: the surface of departement has been calculated and spatial data removed.
+
+```{r results = 'hide'}
+# Reading the csv file
+dpt_data_modif <- read.csv("data/dpt_data_modif.csv")
+# Displaying the first rows
+dpt_data_modif %>% head()
+```
+
+
+#### Elementary and college schools
+
+We also fetched for you on [data.gouv.fr](https://www.data.gouv.fr/fr/datasets/adresse-et-geolocalisation-des-etablissements-denseignement-du-premier-et-second-degres/#_) the addresses of "primary and secondary schools, the administrative structures of the Ministry of National Education. Public and private sectors."
+
+1. Data preprocessing 
+    + Import the csv file : "DEPP-etab-1D2D.csv" and name it "depp_orig"
+        + Encoding is `"latin1"`
+    + Transform zip code ("code_postal_uai") into 5 characters with zeros
+    + Extract department numbers ("dpt") starting from column "code_postal_uai"
+    + Save the modifications into "depp_modif.csv"
+
+```{r}
+# Reading the csv file
+depp_orig <- read.csv2("data/DEPP-etab-1D2D.csv", encoding = "latin1")
+# Changing the formatting of zip codes and extracting department numbers
+depp_modif <- depp_orig %>% mutate(code_postal_uai = sprintf("%05d",code_postal_uai)) %>% 
+  mutate(dpt = str_sub(code_postal_uai, 1, 2))
+# Displaying the first rows
+depp_modif %>% head()
+# Saving the modifications in a new csv file
+write.csv(depp_modif, "data/depp_modif_iva.csv")
+```
+
+2. Read the pre-processed "depp_modif.csv" file
+
+```{r results = 'hide'}
+# Reading the file we just created
+read.csv("data/depp_modif_iva.csv", row.names = 1) 
+# Reading the pre-processed file we were given
+read.csv("data/depp_modif.csv") 
+
+# The chunk is silent because otherwise the html file would be too heavy
+# I checked that both files can be used in the same way in the following analyses
+```
+
+
+#### Facts observed by the police services and national gendarmerie units by department
+
+We also gathered data from [data.gouv.fr](https://www.data.gouv.fr/fr/datasets/faits-constates-par-index-par-departement-et-par-annee/#_) concerning "all the facts observed by the police services and national gendarmerie units by department from 1996 to 2011"
+
+1. Data preprocessing 
+    - Import Excel sheet "2010" from "faitsconstatespardepartementde2002-a-2011.xls" file
+        + _beware of the original formatting_
+    - Copy it into "faits_2010_modif" in order to make some modifications:
+        + Delete Excel calculations:
+            + `Tout_d??partement`, `Tout_index`
+        + Transform in long format using `gather`
+            + 4 columns : Index, Libell??, dpt, nombre
+        + save the dataframe into a csv file "faits_2010_modif.csv"
+
+```{r}
+# Reading the csv file
+faits_2010 <- read_excel("data/faitsconstatespardepartementde2002-a-2011.xls", sheet = "2010", skip = 1) #Using Skip to have the right variable names and correct the original formatting (skipping 1 row at least before reading anything)
+# Displaying the first rows
+head(faits_2010)
+# Removing Excel calculations and transforming in long format using 'gather'
+faits_2010_modif <- faits_2010 %>% dplyr::select(-"Tout département") %>% 
+  filter(Libellé != "Tout index") %>% 
+  gather(key = "dpt", value = "nombre", 3:99)
+# Displaying the first rows again
+head(faits_2010_modif)
+# Saving in a new csv file
+write.csv(faits_2010_modif, "data/faits_2010_modif_iva.csv")
+```
+
+2. Read preprocessed file "faits_2010_modif.csv"
+
+```{r results = 'hide'}
+# Reading the file we just created
+read.csv("data/faits_2010_modif_iva.csv", row.names = 1)
+# Reading the pre-processed file we were sent
+read.csv("data/faits_2010_modif.csv")
+
+#The chunk is silent because otherwise the html file would be too heavy
+# I checked that both files can be used in the same way in the following analyses
+```
+
+
+## Analyses
+
+Some assumptions to do the exercise:
+
+- every child born in a department stays into that department until the end of college
+- every children between 11 and 14 years old is in a college
+- the number of college is constant between 2010 and 2016
+- College "?? ouvrir" (i.e. "to be open") do not have children. Others have.
+
+### Filter datasets to Metropolitan France
+
+Datasets to be filtered: `prenoms`, `depp_modif`, `faits_2010_modif`, `dpt_data_modif`
+
+- Department named "2A" and "2B" should be merged to "20"
+- We only work with data in Metropolitan France, which means for "dpt" between `01` and `95` included. Others needs to be filtered.
+
+```{r results = 'hide'}
+# Checking what departments we have in each file (hidden results)
+prenoms %>% distinct(dpt)
+depp_modif %>% distinct(dpt)
+faits_2010_modif %>% distinct(dpt)
+dpt_data_modif %>% distinct(CODE_DEPT)
+```
+
+
+```{r}
+# Turning 2A and 2B into 20 and getting rid of everything that is not between 01 and 95
+
+# prenoms has 2A and 2B and dpts > 95
+prenoms_metropolitan <- prenoms %>% mutate(dpt = case_when(
+  dpt %in% c("2A","2B") ~ "20",
+  TRUE ~ as.character(dpt))) %>% 
+  filter(dpt <= 95)
+
+# depp_modif has 00 and > 95
+depp_modif_metropolitan <- depp_modif %>% 
+  filter(dpt != "00" & dpt <= 95) 
+
+# faits_2010_modif has 2A, 2B and Service à compétence national
+faits_2010_modif_metropolitan <- faits_2010_modif %>% 
+  mutate(dpt = case_when(
+  dpt %in% c("2A","2B") ~ "20",
+  TRUE ~ dpt)) %>% 
+  filter(dpt != "Service à compétence national")
+
+#dpt_data_modif has 2A and 2B
+dpt_data_modif_metropolitan <- dpt_data_modif %>%
+  mutate(CODE_DEPT = case_when(
+  CODE_DEPT %in% c("2A","2B") ~ "20",
+  TRUE ~ as.character(CODE_DEPT))) 
+```
+
+
+### National average number of children per college in 2010 ?
+
+```{r}
+# Pulling the total number of children in colleges (born between 1996 and 1999 so as to be 11 to 14 in 2010)
+children_in_college <- prenoms_metropolitan %>% filter(year %in% c(1996:1999)) %>% 
+  summarise(children_in_college = sum(n)) %>% 
+  pull(children_in_college)
+
+# Pulling the total number colleges opened
+colleges <- depp_modif_metropolitan %>% filter(nature_uai_libe %in% c("Collège", "Collège spécialisé", "Collège climatique") & etat_etablissement != 3) %>% 
+  summarise(colleges = n()) %>% 
+  pull(colleges)
+
+# Dividing the total number of children in colleges by the total number of colleges and displaying the result
+print(average_children_per_college <- children_in_college / colleges)
+```
+
+### Average number of children per college in 2010 in each department?
+
+- Arrange departments according to the calculated average in descending order
+
+```{r}
+# Getting the number of children in colleges in each department
+children_in_college_dpt <- prenoms_metropolitan %>% 
+  filter(year %in% c(1996:1999)) %>% 
+  group_by(dpt) %>% 
+  summarise(children_in_college = sum(n))
+
+# Getting the number of colleges in each department
+colleges_dpt <- depp_modif_metropolitan %>% 
+  filter(nature_uai_libe %in% c("Collège","Collège spécialisé","Collège climatique") & etat_etablissement !=3) %>% 
+  group_by (dpt) %>% 
+  summarise(colleges = n())
+
+# Joining both tables and calculating the average number of children per college in 2010 in each department by dividing
+average_children_per_college_dpt <- full_join(children_in_college_dpt, colleges_dpt) %>% 
+  mutate(average_children_per_college = children_in_college / colleges) %>% 
+  dplyr::select(dpt, average_children_per_college) %>% 
+  arrange(desc(average_children_per_college))
+
+# Displaying the result
+average_children_per_college_dpt
+```
+
+### Number of Facts observed by the police services in 2010 per department ? 
+
+```{r}
+# Calculating the number of facts by department
+faits_2010_dpt <- faits_2010_modif_metropolitan %>% 
+  group_by(dpt) %>% 
+  summarise(nb_faits = sum(nombre)) %>% 
+  arrange(desc(nb_faits))
+
+# Displaying the result
+faits_2010_dpt
+```
+
+### Number of children born, number of colleges and facts related by the police services per department in 2010 ?
+
+- Group all information in the same table
+- Arrange by descending order of children, schools and facts
+
+```{r}
+# Calculating the number of children born in 2010 by department
+children_2010 <- prenoms_metropolitan %>% 
+  filter(year == "2010") %>% 
+  group_by(dpt) %>% 
+  summarise(children_born = sum(n))
+  
+# Joining this table with the table indicating the number of colleges by department
+children_born_and_colleges_2010 <- full_join(children_2010 , colleges_dpt)
+
+# Joining this table with the table indicating the number of facts observed, under the name "master_table_2010"
+master_table_2010 <- full_join(children_born_and_colleges_2010, faits_2010_dpt) %>% 
+  arrange(desc(children_born), desc(colleges), desc(nb_faits))
+
+# Displaying the result
+master_table_2010
+```
+
+### Number of children born, number of colleges and facts related by the police services per km?? in 2010 by department?
+
+```{r}
+# Getting the surface of each department in km2
+km2_dpt <- dpt_data_modif_metropolitan %>% 
+  mutate(km2 = surface_m / 1000000) %>% 
+  group_by(CODE_DEPT, CODE_REG, NOM_REG) %>% 
+  summarise(surface_km2 = sum(km2))
+
+# Joining this table with our master_table_2010 and divinding each previous column by the surface in km2
+master_table_2010_km2 <- full_join(master_table_2010,km2_dpt, by = c("dpt" = "CODE_DEPT")) %>% 
+  mutate(children_born_km2 = children_born / surface_km2) %>% 
+  mutate(colleges_km2 = colleges / surface_km2) %>% 
+  mutate(nb_faits_km2 = nb_faits / surface_km2) %>% 
+  arrange(desc(children_born_km2), desc(colleges_km2), desc(nb_faits_km2))
+
+# Displaying the result
+print(master_table_2010_km2 %>% dplyr::select(dpt, children_born_km2, colleges_km2, nb_faits_km2))
+```
+
+### Is there a correlation between the number of birth and the number of facts related by the police per km?? in 2010 ?
+
+```{r}
+# We use the Pearson method, which is the more common, because we can infer that both samples follow a gaussian distribution
+cor.test(master_table_2010_km2$children_born_km2, master_table_2010_km2$nb_faits_km2, method = "pearson")
+# We observe a very high correlation: 0.99. The 95 % confidence interval is rather small so we are very confident in this high correlation.
+```
+
+### What is the mean regional density (in number/km??) of the 15 most given first names in France ?
+
+- Filter the 15 most given first names in France
+- Create a unique wide table with the department as observations and the 15 most given names in columns (as variables): the count is at the row-column intersection 
+- merge with the surface department infos
+- Compute the region surface and the density of names by region (e.g. number of people named "Bob", "Anna", ... by km?? of each region)
+    + Region name is stored in variable `NOM_REG`. (There are multiple departments in each region)
+
+```{r}
+# Filtering the 15 most given first names in France (inference: we don't take genders into account)
+fifteen_prenoms_metropolitan <- prenoms_metropolitan %>%
+  filter(year == "2010") %>% 
+  group_by(name) %>% 
+  summarise(total = sum(n)) %>% 
+  top_n(15, total) %>% 
+  arrange(desc(total))
+
+# Creating a table with the department as observations and the 15 most given names in columns (as variables): the count is at the row-column intersection
+density_table_dpt <- prenoms_metropolitan %>% 
+  filter(name %in% fifteen_prenoms_metropolitan$name) %>% 
+  filter(year == "2010") %>% 
+  dplyr::select(-sex, -prop, -year) %>% 
+  group_by(name, dpt) %>% 
+  summarise(total = sum(n)) %>% 
+  spread(key = "name", value = "total")
+
+# Replacing all the NA by 0 to ease calculation
+density_table_dpt[is.na(density_table_dpt)] <- 0
+
+# Merging with the surface dpt info and computing the region surface and the total number of names by region
+density_table_region <- full_join(density_table_dpt, km2_dpt, by = c("dpt" = "CODE_DEPT")) %>% 
+  group_by(NOM_REG, CODE_REG) %>% 
+  summarise_if(is.numeric,sum)
+
+# Computing the density of names by km2 by region
+density_table_region_km2 <- density_table_region %>% 
+  mutate_at(vars(3:17), funs(. / surface_km2)) %>% 
+  dplyr::select(-surface_km2)
+
+# Displaying the result
+density_table_region_km2
+```
+
+#### Bonus question : map the mean regional density (in number/km??) of the 15 most given first names in France 
+
+- Use the "department" shapefile to cross information and map data
+    + Region name is stored in variable `NOM_REG`. (There are multiple departments in each region)
+
+```{r}
+# Creating a department map using the "department" shapefile
+map_l93 <- st_read(
+  "data/departements/DEPARTEMENT.shp"
+  , quiet = FALSE, stringsAsFactors = FALSE)
+
+# Merging departments into regions
+map_regions_l93 <-  map_l93 %>% 
+  mutate(CODE_REG = as.integer(CODE_REG)) %>% 
+  group_by(CODE_REG, NOM_REG) %>% 
+  summarize()
+glimpse(map_regions_l93)
+
+# Merging with densities and creating an average of the 15 most popular surnames densities
+map_regions_density_l93 <- full_join(map_regions_l93, density_table_region_km2, by = "CODE_REG") %>% 
+  mutate(average_fifteen_surnames_density = (Arthur + Nathan + Lucas + Emma + Enzo + Manon + Lola + Louis + Camille + Jade + Hugo + Gabriel + Ethan + Jules + Mathis)/ 15)
+
+# Mapping regions with different colors according to the average density for the 15 most popular surnames
+ggplot(map_regions_density_l93) +
+  geom_sf(aes(fill = average_fifteen_surnames_density)) +
+  coord_sf(crs = st_crs(map_regions_density_l93)) +
+  ggtitle("Average density of the 15 most popular surnames in France", subtitle = "in 2010 by region")
+
+# Mapping reginos with different colors according to the density for the most popular surname, Nathan
+ggplot(map_regions_density_l93) +
+  geom_sf(aes(fill = Nathan)) +
+  coord_sf(crs = st_crs(map_regions_density_l93)) +
+  ggtitle("Average density of Nathan, most given surname in France", subtitle = "in 2010, by region")
+
+```
+
